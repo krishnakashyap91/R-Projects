@@ -1,0 +1,86 @@
+---
+title: "Assignment-2"
+author: "Krishna Kashyap-U1073812"
+date: "January 21, 2017"
+output: pdf_document
+---
+
+---
+##Question-1: Create and upload a histogram of bike usage that is faceted by temperature, which you have turned into a binary variable: above average (or equal to the average) and below average. Make sure that "below average" is in the left column and "above average" is in the right. The way to do this is to re-order the default (alphabetic) factor levels of your binary temperature variable.
+```{r}
+library(dplyr)
+library(ggplot2)
+
+#Reading data from source file
+setwd("C:/Users/pc/Desktop/UoU/Spring/Predictive analysis/Assignments")
+bike_data <- read.csv("day.csv")
+str(bike_data)
+
+#Converting temp to binary
+
+bike_data$temp_bin <- ifelse(bike_data$temp >= mean(bike_data$temp), "Temp Above average", "Temp Below average")
+bike_data$temp_bin <- factor(bike_data$temp_bin, levels = c("Temp Below average", "Temp Above average"))
+
+#Histogram of bike usage faceted by temperature
+ggplot(data = bike_data, aes(x = cnt)) + geom_histogram() + facet_wrap(~bike_data$temp_bin)+ggtitle("Bike ridership according to temperature") + xlab("Bike Usage")
+```
+
+##Question-2:Create and upload a histogram of bike usage that is faceted by month and the binary temperature variable: above average (or equal to the average) and below average. Month should be organized as rows, temperature as columns. Again make sure that "below average" is in the left column and "above average" is in the right.
+```{r}
+#Histogram of bike usage faceted by month and temperature
+ggplot(data = bike_data, aes(x = cnt)) + geom_histogram() + facet_grid(bike_data$mnth ~ bike_data$temp_bin)+ggtitle("Bike ridership according to month and average temperature") + xlab("Bike Usage")
+```
+
+##Question-3: Create and upload a similar plot-a histogram of bike usage that is faceted by month and a binary temperature variable. This time, however, make sure that the binary temperature variable, above and below average, is computed uniquely for each month. For example, the values of the binary temperature variable for January should be above and below average for January. Again, make sure that "below average" is in the left column and "above average" is in the right.
+```{r}
+#Computing average temperature for each month and creating a binary temperature variable
+bike_data%>%
+  group_by(mnth)%>%
+  mutate(monthly_temp = as.factor(ifelse(temp >= mean(temp), "Temp Above average", "Temp Below Average")))%>%
+ggplot(aes(cnt)) +geom_histogram() + facet_grid(mnth ~ factor(monthly_temp, levels(monthly_temp)[c(2,1)])) + ggtitle("Bike ridership according to month and monthly average temperature") + xlab("Bike Usage")
+
+
+```
+
+##Question-4:What are the 95% confidence intervals for the conditional mean of ridership in each season? Round your answers to whole numbers.
+```{r}
+#Calculating mean ridership and SEM for each season
+mean_season <- c(0,0,0,0)
+sem_season <- c(0,0,0,0)
+
+for (i in 1:4) {
+s <- bike_data %>%
+   filter(bike_data$season == i)
+mean_season[i] <- mean(s$cnt)
+
+#SEM calculation
+sem_season[i] <- sd(s$cnt) / sqrt(length(s$cnt)) 
+}
+
+#Confidence interval calcualation
+CI_spring <- c((mean_season[1] - sem_season[1]*1.96) , (mean_season[1] + sem_season[1]*1.96))
+round(CI_spring)
+
+CI_summer <- c((mean_season[2] - sem_season[2]*1.96) , (mean_season[2] + sem_season[2]*1.96))
+round(CI_summer)
+
+CI_fall <- c((mean_season[3] - sem_season[3]*1.96) , (mean_season[3] + sem_season[3]*1.96))
+round(CI_fall)
+
+CI_winter <- c((mean_season[4] - sem_season[4]*1.96) , (mean_season[4] + sem_season[4]*1.96))
+round(CI_winter)
+```
+
+
+##Question-6:Extra credit. Re-create the above plot exactly using your own dplyr and ggplot code.
+```{r}
+m <- bike_data%>%
+  group_by(mnth)%>%
+  mutate(monthly_temp = as.factor(ifelse(temp >= mean(temp), "Above average", "Below average")))
+
+m%>%
+  group_by(mnth, monthly_temp)%>%
+  summarise(mean_cnt = mean(cnt))%>%
+  ggplot(aes(x = factor(mnth), y = mean_cnt, group = monthly_temp, col = factor(monthly_temp, levels(monthly_temp)[c(2,1)]))) + scale_color_discrete(name = "monthly temp") + geom_line() +xlab("month") + ylab("ridership") + ggtitle("Average ridership by month and temperature")
+
+```

@@ -1,0 +1,114 @@
+---
+title: "Assignment-1"
+author: "Krishna Kashyap-U1073812"
+date: "January 18, 2017"
+output: pdf_document
+---
+##Question-1: Create and upload a histogram of bike ridership (encoded in the variable "cnt") for 2011.
+
+```{r}
+#Reading data from source file
+setwd("C:/Users/pc/Desktop/UoU/Spring/Predictive analysis/Assignments/DAta")
+bike_data <- read.csv("day.csv")
+str(bike_data)
+
+#Filtering for the year 2011
+data_2011 <- bike_data[which(bike_data$yr == 0),]
+
+hist(main = "Histogram of bike ridership for 2011", xlab = "Count of total bikes", x = data_2011$cnt)
+```
+
+##Question-2: Create and upload a histogram of bike ridership for 2012
+
+```{r}
+#Filtering for the year 2012
+data_2012 <- bike_data[which(bike_data$yr == 1),]
+
+hist(main = "Histogram of bike ridership for 2012", xlab = "Count of total bikes", x = data_2012$cnt)
+```
+
+##Question-3: Create and upload a boxplot of "cnt" by year.
+
+```{r}
+boxplot(bike_data$cnt ~ bike_data$yr, main = "Boxplot of total bike rentals by year", ylab = "Count", xlab = "Year", names=c("2011","2012"))
+```
+
+##Question-4: Create and upload a boxplot of "cnt" by workingday.
+
+```{r}
+boxplot(bike_data$cnt ~ bike_data$workingday, main = "Boxplot of total bike rentals by workingday", ylab = "Count",names=c("Working day","Weekend/Holiday"))
+```
+
+##Question-5: Create and upload a boxplot of "cnt" by month.
+
+```{r}
+boxplot(bike_data$cnt ~ bike_data$mnth, main = "Boxplot of total bike rentals by month", ylab = "Count", xlab = "Month")
+```
+
+##Question-6: Which of these variables--year, workingday or month--would you select as the *weakest* predictor of bike ridership?
+
+```{r}
+
+```
+
+##Question-7: Which month had the highest median number of riders?
+
+```{r}
+m <- 0
+for (i in 1:12) {
+  m[i] <- c(median(subset(bike_data$cnt, bike_data$mnth == i)))
+}
+order(m, decreasing = T)
+```
+
+##Question-8: Which month, based on the middle 50% of observations, had the most riders?
+
+```{r}
+month <- 0
+for (n in 1:12) {
+  month[n] <- c(IQR(subset(bike_data$cnt, bike_data$mnth == n)))
+}
+order(month, decreasing = T)
+```
+
+##Question-9: Turn yr into a factor variable and create and upload a scatterplot with temp on the x-axis and cnt on the y-axis. Color the points by yr. Challenge: create legend for color.
+
+```{r}
+#Converting yr to factors
+str(bike_data)
+bike_data$yr <- as.factor(bike_data$yr)
+str(bike_data)
+
+#Scatterplot with temp on the x-axis and cnt on the y-axis colored by yr.
+plot(x = bike_data$temp, y = bike_data$cnt, xlab = "Temperature", ylab = "Count", col = bike_data$yr)
+
+#Adding legend to the plot
+year <- bike_data$yr
+levels(year) <- c("2011","2012")
+legend('topleft', legend = unique(year), pch = c(1,1), col = c('black', 'red'), title = "Year")
+```
+
+##Question-10: Create two histograms of cnt, one for winter and one for summer, and put them together, one on top of the other.  Upload that single plot.  Make sure that the x axes have the same scale
+
+```{r}
+#Winter
+data_winter <- bike_data[which(bike_data$season == 4),]
+hist(main = "Histogram of bike ridership during summer and winter", xlab = "Count of total bikes", x = data_winter$cnt, ylim = c(0,50), xlim = c(0,10000), col = rgb(0,1,1,0.3))
+
+#Winter and Summer overlapped
+data_summer <- bike_data[which(bike_data$season == 2),]
+hist(main = "Histogram of bike ridership during summer and winter", xlab = "Count of total bikes", x = data_summer$cnt, ylim = c(0,50), xlim = c(0,10000), col = rgb(1,0,0,0.3), add = T)
+
+#Legend
+s <- subset(bike_data$season, bike_data$season == 4 | bike_data$season == 2)
+s <- as.factor(s)
+levels(s) <- c("Winter", "Summer")
+legend('topleft', legend = unique(s), pch = c(1,1), col = c(rgb(0,1,1,0.3), rgb(1,0,0,0.3)), title = "Season")
+```
+
+##Question-11: Based on your exploration of the data, describe the conditions that are likely to produce a high volume of riders.
+
+```{r}
+aggregate(cnt~season,sum, data=bike_data)
+aggregate(temp~season,median, data=bike_data)
+```
