@@ -1,0 +1,125 @@
+---
+title: "Assignment-3"
+author: "Krishna Kashyap-U1073812"
+date: "January 28, 2017"
+output: pdf_document
+---
+##Question-1: With cnt as the outcome variable, fit a K-nearest neighbor regression model (KNN) using the train() function in the caret package with the following variables as predictors: mnth, holiday, weathersit, temp, and windspeed. Report RMSE and R-squared. Round your results to two decimals.
+```{r}
+library(caret)
+library(arm)
+library(dplyr)
+library(ggplot2)
+
+#Reading data from source file
+setwd("C:/Users/pc/Desktop/UoU/Spring/Predictive analysis/Assignments")
+bike_data <- read.csv("day.csv")
+
+# KNN model for cnt
+(knn_cnt <- train(cnt ~ mnth + holiday + weathersit + temp + windspeed,
+                  preProcess = c("center","scale"),
+                  method="knn", 
+                  data =bike_data))
+
+rmse <- function(yhat, y) {
+  sqrt((mean((yhat - y)^2)))
+}
+
+round(rmse(bike_data$cnt, predict(knn_cnt)) ,2)
+
+R2 <- function(y, yhat, ybar, digits = 2) {
+  1 - sum((y - yhat)^2)/sum((y - ybar)^2)
+}
+
+round(R2(y = bike_data$cnt, yhat = predict(knn_cnt), mean(bike_data$cnt)),2)
+
+model.matrix(knn)
+```
+
+##Question-2: Is there evidence that the above KNN model overfits the data? Briefly explain your answer.
+```{r}
+rmse(bike_data$cnt, predict(knn_cnt))
+```
+
+##Question-3: Using the same variables as above, fit a linear model. Note that the categorical variables with more than two levels need to be recoded, either as character or factor variables, otherwise R will misunderstand them as numeric. lm() will treat character variables appropriately as factors. Report RMSE and R-squared for this model. Round your results to two decimals.
+```{r}
+str(bike_data)
+
+#Converting mnth and weathersit to factors
+bike_data$mnth_f <- as.factor(bike_data$mnth)
+bike_data$weathersit_f <- as.factor(bike_data$weathersit)
+
+#Linear model
+(lm_cnt <- train(cnt ~ mnth_f + holiday + weathersit_f + temp + windspeed, 
+                 method="lm",
+                 data =bike_data))
+
+round(rmse(bike_data$cnt, predict(lm_cnt)),2)
+
+round(R2(y = bike_data$cnt, yhat = predict(lm_cnt), mean(bike_data$cnt)),2)
+```
+
+##Question-4: In class we have noted that the temp variable is not quite linear when plotted against cnt. Mean ridership increases as temperature increases, then levels off, then declines at the highest temperatures. Create a new variable, temp2, by multiplying temp x temp. Refit the KNN and linear models above using this additional variable. Report RMSE and R2 for both models. Round your results to two decimals.
+```{r}
+#Calculating temp2
+bike_data$temp2 <- bike_data$temp * bike_data$temp 
+
+#KNN  model with temp2
+(knn_cnt1 <- train(cnt ~ mnth + holiday + weathersit + temp + windspeed + temp2, 
+                  preProcess = c("center","scale"),
+                  method="knn", 
+                  data =bike_data))
+
+#Linear model with temp2
+(lm_cnt1 <- train(cnt ~ mnth_f + holiday + weathersit_f + temp + windspeed + temp2, 
+                 method="lm",
+                 data =bike_data))
+
+#RMSE and R2 values
+round(rmse(bike_data$cnt, predict(knn_cnt1)),2)
+
+round(R2(y = bike_data$cnt, yhat = predict(knn_cnt1), mean(bike_data$cnt)),2)
+
+round(rmse(bike_data$cnt, predict(lm_cnt1)),2)
+
+round(R2(y = bike_data$cnt, yhat = predict(lm_cnt1), mean(bike_data$cnt)),2)
+```
+
+##Question-5: The temp2 variable seems to help one model more than the other. Explain why this might be so.
+```{r}
+
+```
+
+##Question-6: Using the linear model you fit above (with mnth, holiday, weathersit, temp and windspeed as explanatory variables, but not temp2), predict ridership for a holiday in May when temperature and windspeed are average and weathersit = 1. Round your results to the nearest whole number.
+```{r}
+#Linear model
+lm_model <- lm(cnt ~ holiday + mnth_f + windspeed + temp + weathersit_f, data = bike_data)
+i <- data.frame(holiday=1,mnth_f=as.factor(5),windspeed=mean(bike_data$windspeed),temp=mean(bike_data$temp),weathersit_f=as.factor(1))
+
+round(predict(lm_model, i))
+```
+
+##Question-7: Using the same model (i.e., without the temp2 variable), calculate 95% confidence intervals for the coefficient for temp. Round your results to two decimals.
+```{r}
+display(lm_model)
+#95% confidence intervals for the coefficient for temp
+(CI1 <- round((5867.27 - 1.96 * 669.56),2))
+(CI2 <- round((5867.27 + 1.96 * 669.56),2))
+```
+
+##Question-8: Extra credit. Fit two simple bivariate models of cnt using temp as the predictor. For the first, use KNN regression, and for the second use linear regression. Fit a third regression using linear regression but add a quadratic term for temp. Upload three scatter plots that display ^??(t) as estimated non-parametrically by the KNN algorithm and parametrically by the ordinary least squares algorithm, with and without the quadratic term for temp. In the plots, temp should be on the x-axis and cnt on the y-axis. Show ^??(t) with a red line. Title and label your plots appropriately.
+```{r}
+(knn_cnt2 <- train(cnt ~ temp ,
+                   preProcess = c("center","scale"),
+                   method="knn",
+                   data =bike_data))
+
+(lm_cnt2 <- train(cnt ~ temp, 
+                  method="lm",
+                  data =bike_data))
+plot(bike_data$temp, bike_data$cnt , main = "count ~ temp", xlab = "Tempreature", ylab = "Bike Ridership")
+abline(lm(cnt ~ temp, data = bike_data), col = 2)
+
+plot(bike_data$temp, bike_data$cnt , main = "count ~ temp",xlab = "Tempreature", ylab = "Bike Ridership")
+abline(lm(cnt ~ temp+temp2, data = bike_data), col = 2)
+```
