@@ -1,0 +1,686 @@
+---
+title: "Project_Final"
+author: "Prajwal Nagaraju, Srilekha Desaraju, Krishna Kashyap "
+date: "February 23, 2017"
+output: pdf_document
+---
+#Data Exploration
+```{r}
+library(Hmisc)
+library(corrplot)
+library(Amelia)
+library(mice)
+library(ggplot2)
+library(lattice)
+library(missForest)
+library(caret)
+library(arm)
+library(dplyr)
+library(ggplot2)
+library(faraway)
+library(MASS)
+library(rminer)
+library(psych)
+library(missForest)
+library(moments)
+library(tree)
+
+
+#Reading data from source file
+setwd("C:/Users/krish/Desktop/UoU/Spring/Predictive analysis/Project")
+house_train <- read.csv("train.csv")
+
+dim(house_train)
+str(house_train)
+summary(house_train)
+
+#We can see that there are many variables with NAs
+head(house_train)
+
+#Viewing the first five rows of the data indicates that there are columns which have missing values. The categorical variables with the largest number of missing values are: Alley, FirePlaceQu, PoolQC, Fence, and MiscFeature.
+#The missing values indicate that majority of the houses do not have alley access, no pool, no fence and no elevator, 2nd garage, shed or tennis court that is covered by the MiscFeature.
+
+#SalePrice is strongly skewed as can be seen in the below histogram/
+hist(house_train$SalePrice,xlab="Sale Price",main = "Sale Price")
+
+#Let us log transform it to get a better distribution
+hist(log(house_train$SalePrice),xlab="Log Sale Price",main = "Log transformed Sale Price")
+
+#let us create a log of the SalePrice
+house_train$logSalePrice<-log(house_train$SalePrice)
+```
+
+#Impute Missing Data
+```{r}
+#Combining training data and testing data to impute missing data.
+house_test <- read.csv("test.csv")
+
+#Setting SalesPrice to 0 for all rows.
+sale_price_vector <- NULL
+for(i in 1:nrow(house_test)){
+  sale_price_vector[i] <- 0
+}
+
+house_test$SalePrice <- sale_price_vector
+
+#Compare the dimensions of train and test data
+dim(house_train)
+dim(house_test)
+#We can see that the dimensions dont match
+#Train data has 2 extra columns(SalePrice and logSalePrice) compared to test.So let us remove those 2 extra columns while combining 
+house_data<-rbind(house_train[,-c(dim(house_train)[2])],house_test)
+
+#MoSold ,MSSubClass,YrSold are continouous variables
+house_data$MoSold
+house_data$MSSubClass
+house_data$YrSold
+
+#Convert them into categorical variables
+house_data$MSSubClass <- as.factor(house_data$MSSubClass)
+house_data$MoSold <- as.factor(house_data$MoSold)
+house_data$YrSold <- as.factor(house_data$YrSold)
+
+#For many predictors, NA does not actually mean missing but means no. Eg: Fence NA means no Fence. We impute those NAs as a category called "None"
+## NA as a category: without 
+var_NAtoWithout<-c("Alley","BsmtQual","BsmtCond","BsmtExposure","BsmtFinType1","BsmtFinType2","FireplaceQu","GarageType","GarageFinish","GarageQual","GarageCond","PoolQC","Fence","MiscFeature")
+## impute NA to without
+without<-function(data,var){
+        levels(data[,var]) <- c(levels(data[,var]), "None")
+        data[,var][is.na(data[,var])] <- "None"
+        return(data[,var])
+}
+data_combined<-house_data
+
+for(i in 1:length(var_NAtoWithout)){
+  data_combined[,var_NAtoWithout[i]] <- as.character(data_combined[,var_NAtoWithout[i]])
+}
+
+for (i in 1:length(var_NAtoWithout)){
+       data_combined[,var_NAtoWithout[i]]<-without(house_data,var_NAtoWithout[i]) 
+}
+
+for(i in 1:length(var_NAtoWithout)){
+  data_combined[,var_NAtoWithout[i]] <- as.factor(data_combined[,var_NAtoWithout[i]])
+}
+#We can see that the NA values have been changed to None
+head(data_combined)
+
+#Some variables still have missing value. use mice in a R package to impute them.
+#The numeric variables do not have as many missing values but there are still some present. 
+#LotFrontage: Linear feet of street connected to property
+#GarageYrBlt: Year garage was built
+#MasVnrArea: Masonry veener area in square feet
+
+sum(is.na(data_combined$LotFrontage))
+sum(is.na(data_combined$GarageYrBlt))
+sum(is.na(data_combined$MasVnrArea))
+sum(is.na(data_combined$MasVnrType))
+sum(is.na(data_combined$Electrical))
+
+## impute missing
+data_combined$GarageYrBlt[is.na(data_combined$GarageYrBlt)]<-0
+
+#data_imp<-mice(data_combined, m=1, method='cart', printFlag=FALSE)
+#data_imputed<-complete(data_imp, action = 1, include = FALSE)
+
+#Imputation using missforest
+mfimp <- missForest(data_combined)
+str(mfimp)
+head(mfimp$ximp)
+
+data_imputed <- mfimp$ximp
+
+#Check again to see if there are any NAs
+sum(is.na(data_imputed$LotFrontage))
+sum(is.na(data_imputed$GarageYrBlt))
+sum(is.na(data_imputed$MasVnrArea))
+sum(is.na(data_imputed$MasVnrType))
+sum(is.na(data_imputed$Electrical))
+
+dim(data_imputed)
+head(data_imputed)
+
+#Logging skewed predictors
+
+# for numeric feature with excessive skewness, perform log transformation
+# first get data type for each feature
+#feature_classes <- sapply(names(data_imputed),function(x){class(data_imputed[[x]])})
+#numeric_feats <-names(feature_classes[feature_classes == "numeric"])
+
+# determine skew for each numeric feature
+#skewed_feats <- sapply(numeric_feats,function(x){skewness(data_imputed[[x]],na.rm=TRUE)})
+
+# keep only features that exceed a threshold for skewness
+#skewed_feats <- skewed_feats[skewed_feats > 0.75]
+
+# transform excessively skewed features with log(x + 1) since some of the predictors have zero values
+#for(x in names(skewed_feats)) {
+#  data_imputed[[x]] <- log(data_imputed[[x]] + 1)
+#}
+
+#Let us split the combined imputed data back into training and testing sets
+house_train_clean <- data_imputed[data_imputed$Id < 1461,]
+house_test_clean <- data_imputed[data_imputed$Id > 1460,]
+
+#Removing SalePrice from test data
+house_test_clean <- house_test_clean[,-81]
+summary(house_train_clean)
+
+#RMSE Function
+rmse <- function(yhat, y) {
+  sqrt((mean((yhat - y)^2)))
+}
+
+```
+
+
+#Running StepAIC() on imputed data
+```{r}
+stepAIC(lm(log(SalePrice) ~ ., data=house_train_clean, direction  = "both"))
+
+#Output of StepAIC()
+model1 <- lm(formula = log(SalePrice) ~ MSSubClass + MSZoning + LotFrontage + 
+    LotArea + Street + LotConfig + LandSlope + Neighborhood + 
+    Condition1 + Condition2 + OverallQual + OverallCond + YearBuilt + 
+    YearRemodAdd + RoofMatl + Exterior1st + MasVnrArea + ExterCond + 
+    Foundation + BsmtExposure + BsmtFinSF1 + BsmtFinSF2 + BsmtUnfSF + 
+    Heating + HeatingQC + CentralAir + X1stFlrSF + X2ndFlrSF + 
+    LowQualFinSF + BsmtFullBath + FullBath + HalfBath + KitchenAbvGr + 
+    KitchenQual + Functional + Fireplaces + GarageCars + GarageArea + 
+    GarageQual + GarageCond + WoodDeckSF + EnclosedPorch + X3SsnPorch + 
+    ScreenPorch + PoolArea + PoolQC + SaleType + SaleCondition, 
+    data = house_train_clean, direction = "both")
+
+
+summary(model1)
+```
+
+
+#Converting ordinal variables to integers
+```{r}
+#Converting ordinal variable to integers. This is done on the combined data
+data_imputed$Utilities <- as.character(data_imputed$Utilities)
+is.character(data_imputed$Utilities)
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$Utilities[i] == "AllPub"){
+  data_imputed$Utilities[i] <- 4 
+  }
+  if(data_imputed$Utilities[i] == "NoSeWr"){
+  data_imputed$Utilities[i] <- 3
+  }
+
+if(data_imputed$Utilities[i] == "NoSeWa")
+  {
+  data_imputed$Utilities[i] <- 2 
+  }
+ if(data_imputed$Utilities[i] == "ELO"){
+  data_imputed$Utilities[i] <- 1 
+ }
+}
+data_imputed$Utilities <- as.integer(data_imputed$Utilities)
+table(data_imputed$Utilities)
+
+#-----------------------------------------------------------------------
+data_imputed$LandSlope <- as.character(data_imputed$LandSlope)
+is.character(data_imputed$LandSlope)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$LandSlope[i] == "Gtl"){
+  data_imputed$LandSlope[i] <- 3
+  }
+  if(data_imputed$LandSlope[i] == "Mod"){
+  data_imputed$LandSlope[i] <- 2
+  }
+
+if(data_imputed$LandSlope[i] == "Sev"){
+  data_imputed$LandSlope[i] <- 1 
+  }
+
+}
+
+data_imputed$LandSlope <- as.integer(data_imputed$LandSlope)
+table(data_imputed$LandSlope)
+
+#-----------------------------------------------------------------------
+data_imputed$ExterCond <- as.character(data_imputed$ExterCond)
+is.character(data_imputed$ExterCond)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$ExterCond[i] == "Ex"){
+  data_imputed$ExterCond[i] <- 5
+  }
+  if(data_imputed$ExterCond[i] == "Gd"){
+  data_imputed$ExterCond[i] <- 4
+  }
+
+if(data_imputed$ExterCond[i] == "TA"){
+  data_imputed$ExterCond[i] <- 3 
+}
+  if(data_imputed$ExterCond[i] == "Fa"){
+  data_imputed$ExterCond[i] <- 2 
+  }
+  if(data_imputed$ExterCond[i] == "Po"){
+  data_imputed$ExterCond[i] <- 1 
+  }
+
+}
+
+data_imputed$ExterCond <- as.integer(data_imputed$ExterCond)
+table(data_imputed$ExterCond)
+
+#-----------------------------------------------------------------------
+data_imputed$BsmtQual <- as.character(data_imputed$BsmtQual)
+is.character(data_imputed$BsmtQual)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$BsmtQual[i] == "Ex"){
+  data_imputed$BsmtQual[i] <- 5
+  }
+  if(data_imputed$BsmtQual[i] == "Gd"){
+  data_imputed$BsmtQual[i] <- 4
+  }
+
+if(data_imputed$BsmtQual[i] == "TA"){
+  data_imputed$BsmtQual[i] <- 3 
+}
+  if(data_imputed$BsmtQual[i] == "Fa"){
+  data_imputed$BsmtQual[i] <- 2 
+  }
+  if(data_imputed$BsmtQual[i] == "Po"){
+  data_imputed$BsmtQual[i] <- 1 
+  }
+   if(data_imputed$BsmtQual[i] == "None"){
+  data_imputed$BsmtQual[i] <- 0
+  }
+
+}
+
+data_imputed$BsmtQual <- as.integer(data_imputed$BsmtQual)
+table(data_imputed$BsmtQual)
+
+#-----------------------------------------------------------------------
+data_imputed$BsmtCond <- as.character(data_imputed$BsmtCond)
+is.character(data_imputed$BsmtCond)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$BsmtCond[i] == "Ex"){
+  data_imputed$BsmtCond[i] <- 5
+  }
+  if(data_imputed$BsmtCond[i] == "Gd"){
+  data_imputed$BsmtCond[i] <- 4
+  }
+
+if(data_imputed$BsmtCond[i] == "TA"){
+  data_imputed$BsmtCond[i] <- 3 
+}
+  if(data_imputed$BsmtCond[i] == "Fa"){
+  data_imputed$BsmtCond[i] <- 2 
+  }
+  if(data_imputed$BsmtCond[i] == "Po"){
+  data_imputed$BsmtCond[i] <- 1 
+  }
+   if(data_imputed$BsmtCond[i] == "None"){
+  data_imputed$BsmtCond[i] <- 0
+  }
+
+}
+
+data_imputed$BsmtCond <- as.integer(data_imputed$BsmtCond)
+table(data_imputed$BsmtCond)
+
+#-----------------------------------------------------------------------
+data_imputed$BsmtExposure <- as.character(data_imputed$BsmtExposure)
+is.character(data_imputed$BsmtExposure)
+
+for(i in 1:nrow(data_imputed)){
+  
+  if(data_imputed$BsmtExposure[i] == "Gd"){
+  data_imputed$BsmtExposure[i] <- 4
+  }
+
+if(data_imputed$BsmtExposure[i] == "Av"){
+  data_imputed$BsmtExposure[i] <- 3 
+}
+  if(data_imputed$BsmtExposure[i] == "Mn"){
+  data_imputed$BsmtExposure[i] <- 2 
+  }
+  if(data_imputed$BsmtExposure[i] == "No"){
+  data_imputed$BsmtExposure[i] <- 1 
+  }
+   if(data_imputed$BsmtExposure[i] == "None"){
+  data_imputed$BsmtExposure[i] <- 0
+  }
+
+}
+
+data_imputed$BsmtExposure <- as.integer(data_imputed$BsmtExposure)
+table(data_imputed$BsmtExposure)
+
+#-----------------------------------------------------------------------
+data_imputed$HeatingQC <- as.character(data_imputed$HeatingQC)
+is.character(data_imputed$HeatingQC)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$HeatingQC[i] == "Ex"){
+  data_imputed$HeatingQC[i] <- 5
+  }
+  if(data_imputed$HeatingQC[i] == "Gd"){
+  data_imputed$HeatingQC[i] <- 4
+  }
+
+if(data_imputed$HeatingQC[i] == "TA"){
+  data_imputed$HeatingQC[i] <- 3 
+}
+  if(data_imputed$HeatingQC[i] == "Fa"){
+  data_imputed$HeatingQC[i] <- 2 
+  }
+  if(data_imputed$HeatingQC[i] == "Po"){
+  data_imputed$HeatingQC[i] <- 1 
+  }
+
+}
+
+data_imputed$HeatingQC <- as.integer(data_imputed$HeatingQC)
+table(data_imputed$HeatingQC)
+
+#-----------------------------------------------------------------------
+data_imputed$CentralAir <- as.character(data_imputed$CentralAir)
+is.character(data_imputed$CentralAir)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$CentralAir[i] == "N"){
+  data_imputed$CentralAir[i] <- 0
+  }
+  if(data_imputed$CentralAir[i] == "Y"){
+  data_imputed$CentralAir[i] <- 1
+  }
+}
+
+
+data_imputed$CentralAir <- as.integer(data_imputed$CentralAir)
+table(data_imputed$CentralAir)
+
+#-----------------------------------------------------------------------
+data_imputed$KitchenQual <- as.character(data_imputed$KitchenQual)
+is.character(data_imputed$KitchenQual)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$KitchenQual[i] == "Ex"){
+  data_imputed$KitchenQual[i] <- 5
+  }
+  if(data_imputed$KitchenQual[i] == "Gd"){
+  data_imputed$KitchenQual[i] <- 4
+  }
+
+if(data_imputed$KitchenQual[i] == "TA"){
+  data_imputed$KitchenQual[i] <- 3 
+}
+  if(data_imputed$KitchenQual[i] == "Fa"){
+  data_imputed$KitchenQual[i] <- 2 
+  }
+  if(data_imputed$KitchenQual[i] == "Po"){
+  data_imputed$KitchenQual[i] <- 1 
+  }
+
+}
+
+data_imputed$KitchenQual <- as.integer(data_imputed$KitchenQual)
+table(data_imputed$KitchenQual)
+
+#-----------------------------------------------------------------------
+data_imputed$GarageQual <- as.character(data_imputed$GarageQual)
+is.character(data_imputed$GarageQual)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$GarageQual[i] == "Ex"){
+  data_imputed$GarageQual[i] <- 5
+  }
+  if(data_imputed$GarageQual[i] == "Gd"){
+  data_imputed$GarageQual[i] <- 4
+  }
+
+if(data_imputed$GarageQual[i] == "TA"){
+  data_imputed$GarageQual[i] <- 3
+}
+  if(data_imputed$GarageQual[i] == "Fa"){
+  data_imputed$GarageQual[i] <- 2
+  }
+  if(data_imputed$GarageQual[i] == "Po"){
+  data_imputed$GarageQual[i] <- 1 
+  }
+  if(data_imputed$GarageQual[i] == "None"){
+  data_imputed$GarageQual[i] <- 0
+  }
+
+}
+
+data_imputed$GarageQual <- as.integer(data_imputed$GarageQual)
+table(data_imputed$GarageQual)
+
+#-----------------------------------------------------------------------
+data_imputed$GarageCond <- as.character(data_imputed$GarageCond)
+is.character(data_imputed$GarageCond)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$GarageCond[i] == "Ex"){
+  data_imputed$GarageCond[i] <- 5
+  }
+  if(data_imputed$GarageCond[i] == "Gd"){
+  data_imputed$GarageCond[i] <- 4
+  }
+
+if(data_imputed$GarageCond[i] == "TA"){
+  data_imputed$GarageCond[i] <- 3
+}
+  if(data_imputed$GarageCond[i] == "Fa"){
+  data_imputed$GarageCond[i] <- 2 
+  }
+  if(data_imputed$GarageCond[i] == "Po"){
+  data_imputed$GarageCond[i] <- 1
+  }
+  if(data_imputed$GarageCond[i] == "None"){
+  data_imputed$GarageCond[i] <- 0
+  }
+
+}
+
+data_imputed$GarageCond <- as.integer(data_imputed$GarageCond)
+table(data_imputed$GarageCond)
+
+#-----------------------------------------------------------------------
+data_imputed$PoolQC <- as.character(data_imputed$PoolQC)
+is.character(data_imputed$PoolQC)
+
+for(i in 1:nrow(data_imputed)){
+  if(data_imputed$PoolQC[i] == "Ex"){
+  data_imputed$PoolQC[i] <- 4
+  }
+  if(data_imputed$PoolQC[i] == "Gd"){
+  data_imputed$PoolQC[i] <- 3
+  }
+
+if(data_imputed$PoolQC[i] == "TA"){
+  data_imputed$PoolQC[i] <- 2 
+}
+  if(data_imputed$PoolQC[i] == "Fa"){
+  data_imputed$PoolQC[i] <- 1
+  }
+ 
+  if(data_imputed$PoolQC[i] == "None"){
+  data_imputed$PoolQC[i] <- 0 
+  }
+
+}
+
+data_imputed$PoolQC <- as.integer(data_imputed$PoolQC)
+table(data_imputed$PoolQC)
+
+#Splitting the data into trainand test set again
+house_train_clean <- data_imputed[data_imputed$Id < 1461,]
+house_test_clean <- data_imputed[data_imputed$Id > 1460,]
+
+#Removing SalePrice from test data
+house_test_clean <- house_test_clean[,-81]
+```
+
+
+#VIF function :Multicolinearity among numeric variables.
+```{r}
+str(house_train_clean)
+
+#Predictors from StepAIC 
+predictors <- c("MSSubClass" , "MSZoning" , "LotFrontage" ,
+"LotArea" , "Street" , "LotConfig" , "LandSlope" , "Neighborhood" ,
+"Condition1" , "Condition2" , "OverallQual" , "OverallCond" , "YearBuilt" ,
+"YearRemodAdd" , "RoofMatl" , "Exterior1st" , "MasVnrArea" , "ExterCond" ,
+"Foundation" , "BsmtExposure" , "BsmtFinSF1" , "BsmtFinSF2" , "BsmtUnfSF" ,
+"Heating" , "HeatingQC" , "CentralAir" , "X1stFlrSF" , "X2ndFlrSF" ,
+"LowQualFinSF" , "BsmtFullBath" , "FullBath" , "HalfBath" , "KitchenAbvGr" ,
+"KitchenQual" , "Functional" , "Fireplaces" , "GarageCars" , "GarageArea" ,
+"GarageQual" , "GarageCond" , "WoodDeckSF" , "EnclosedPorch" , "X3SsnPorch" ,
+"ScreenPorch" , "PoolArea" , "PoolQC" , "SaleType" , "SaleCondition", "SalePrice")
+
+
+input <- house_train_clean[,predictors]
+numeric_var <- input[,sapply(input,is.numeric)]
+factor_var <-  input[,sapply(input,is.factor)]
+
+numeric_predictors <- names(numeric_var)
+
+names(numeric_var)
+
+target <- numeric_var[,35]
+
+#Runnig VIF Fuction on numeric variables to remove highly colinear variables
+max_vif <- 6
+while(max_vif > 5){
+  l_m <- lm(log(target) ~ ., data = numeric_var)
+  v <- vif(l_m)
+  max_vif <- v[which.max(v)]
+  col_name <- names(max_vif)
+  for(i in 1: length(numeric_predictors)){
+    if(numeric_predictors[i] == col_name){
+      numeric_predictors <- numeric_predictors[-i]
+      break;
+    }
+  }
+  numeric_var <- house_train_clean[,numeric_predictors]
+}
+
+numeric_predictors
+nrow(numeric_var)
+nrow(factor_var)
+#Combining numeric and factor variables
+merged <- cbind(factor_var, numeric_var)
+
+#Running stepAIC() on merged data
+stepAIC(lm(log(target) ~ ., data=merged, direction  = "both"))
+
+model2 <- lm(formula = log(target) ~ MSSubClass + MSZoning + Street + LotConfig + 
+    Neighborhood + Condition1 + Condition2 + RoofMatl + Exterior1st + 
+    Foundation + Heating + Functional + SaleType + SaleCondition + 
+    LotFrontage + LotArea + OverallQual + OverallCond + YearRemodAdd + 
+    MasVnrArea + BsmtExposure + BsmtUnfSF + HeatingQC + CentralAir + 
+    X1stFlrSF + X2ndFlrSF + LowQualFinSF + BsmtFullBath + FullBath + 
+    HalfBath + KitchenAbvGr + KitchenQual + Fireplaces + GarageArea + 
+    GarageQual + WoodDeckSF + ScreenPorch + PoolArea, data = merged, 
+    direction = "both")
+summary(model2)
+
+rmse(house_train_clean$SalePrice, predict(model2))
+
+#Runnig dropterm() function
+predictorsDropTerm <- c("MSSubClass","MSZoning","Street","LotConfig",
+"Neighborhood","Condition1","Condition2","RoofMatl","Exterior1st",
+"Foundation","Heating","Functional","SaleType","SaleCondition",
+"LotFrontage","LotArea","OverallQual","OverallCond","YearRemodAdd",
+"MasVnrArea","BsmtExposure","BsmtUnfSF","HeatingQC","CentralAir",
+"X1stFlrSF","X2ndFlrSF","LowQualFinSF","BsmtFullBath","FullBath",
+"HalfBath","KitchenAbvGr","KitchenQual","Fireplaces","GarageArea",
+"GarageQual","WoodDeckSF","ScreenPorch","PoolArea")
+
+inputDropTerm <- house_train_clean[,predictorsDropTerm]
+p_value <- NULL
+max_p <- NULL
+
+
+while(length(predictorsDropTerm)>10){
+  l_m <- lm(log(target) ~ ., data = inputDropTerm)
+  d <- dropterm(l_m, test = "F")
+  p_value <- d$`Pr(F)`
+  
+  max_p <- p_value[which.max(p_value)]
+  index <- which(p_value == max_p) - 1
+  predictorsDropTerm <- predictorsDropTerm[-index]
+  inputDropTerm <- house_train_clean[,predictorsDropTerm]
+}
+
+#10 variable model
+model_10 <- lm(log(SalePrice) ~ Neighborhood + BldgType + RoofMatl + OverallQual + OverallCond + YearBuilt + GarageArea + X1stFlrSF + X2ndFlrSF + BsmtFullBath , data = house_train_clean)
+
+summary(model_10)
+```
+
+#Interactions and outliers
+```{r}
+# Using pairs.panels() function to identify interactions among predictors
+ip <- c("Neighborhood","BldgType","RoofMatl","OverallQual","OverallCond","YearBuilt","GarageArea","X1stFlrSF","X2ndFlrSF","BsmtFullBath")
+
+pairs.panels(house_train_clean[,ip])
+
+#Adding interactions
+model_final <- lm(log(SalePrice) ~Neighborhood + BldgType + RoofMatl + OverallQual + OverallCond * YearBuilt + GarageArea * X1stFlrSF + X2ndFlrSF + BsmtFullBath , data = house_train_clean)
+
+summary(model_final)
+
+model_final_std <- standardize(lm(log(SalePrice) ~Neighborhood + BldgType + RoofMatl + OverallQual + OverallCond * YearBuilt + GarageArea * X1stFlrSF + X2ndFlrSF + BsmtFullBath , data = house_train_clean))
+
+summary(model_final_std)
+
+#Identifying outliers: cooks distance
+plot(model_final, which = 4)
+plot(model_final, which = 1)
+
+#Removing outlier
+house_train_clean1 <- house_train_clean[-c(272),]
+
+#(Does not help, hence not utilized)
+#model_final <- lm(log(SalePrice) ~Neighborhood + BldgType + RoofMatl + OverallQual + OverallCond * YearBuilt + GarageArea * X1stFlrSF + X2ndFlrSF + BsmtFullBath , data = house_train_clean1)
+
+#summary(model_final)
+```
+
+
+#Cross Validation
+```{r}
+
+#Insample RMSE and R2
+summary(house_train_clean)
+summary(model_final)
+rmse(log(house_train_clean$SalePrice), predict(model_final))
+rmse(house_train_clean$SalePrice, exp(predict(model_final)))
+
+#Out of sample Performance
+set.seed(200)
+train(log(SalePrice) ~ Neighborhood + BldgType + RoofMatl + OverallQual + OverallCond * YearBuilt + GarageArea * X1stFlrSF + X2ndFlrSF + BsmtFullBath, 
+      data=house_train_clean,
+      method= "lm", 
+      trControl= trainControl(method="repeatedcv", repeats = 5, number=10))
+
+#Out of sample Performance with outlier removed (Does not help, hence not utilized)
+#set.seed(100)
+#train(log(SalePrice) ~ Neighborhood + BldgType + RoofMatl + OverallQual + OverallCond * YearBuilt + GarageArea * X1stFlrSF + X2ndFlrSF + BsmtFullBath, 
+#      data=house_train_clean1,
+#      method= "lm", 
+#      trControl= trainControl(method="repeatedcv", repeats = 5, number=10))
+```
+
+#Running the model on test data
+```{r}
+predict_test <- predict(model_final, house_test_clean)
+house_test_clean$SalePrice <- exp(predict_test)
+
+write.csv(file = "C:/Users/pc/Desktop/UoU/Spring/Predictive analysis/Project/testfinal.csv" ,house_test_clean)
+
+```
+
